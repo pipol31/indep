@@ -26,6 +26,7 @@ sub main {
 	my $error;
 	my $node_name;
 
+
 	# Load the inventory report
 	my $inventory = (
 		new XML::Simple(
@@ -46,40 +47,42 @@ sub main {
 	foreach $policy (@policies) {
 		$policies->{ $policy->{GUID} } = $policy->{name};
 	}
-
+	
 	# Load the completed nodes
 	get_completed_nodes();
 
 	# Get the nodes items
 	@nodes = @{ $inventory->{nodes}[0]->{node} };
 	foreach $node (@nodes) {
-
+my $pol_state;
 		# If the node has not been processed
 		if ( !defined( $completed_nodes->{ $node->{name} } ) ) {
 			if ( defined( $node->{policy} ) ) {
-
 				# Get the policy items
 				@policies = @{ $node->{policy} };
-
+				
 				# Build an array of policy names
 				foreach $policy (@policies) {
+my $state = $policy->{state};
 					$policy = $policies->{ $policy->{GUID} };
+$pol_state->{$policy} = $state;
 				}
 				$i         = 0;
 				$error     = 0;
-				$node_name = primary_node_name( $node->{GUID} );
 				foreach $policy (@policies) {
-					$i++;
-
+				    # Manage disabled/enabled policy state
+				    my $option = policy_state ( $pol_state->{$policy} );
+					
+					$i++;					
 					print(  "ovpmutil.exe dep /pn " 
 						  . $policy . " /np "
 						  . $node_name
-						  . "\n" );
-
+						  . "$option\n" );
 					( $stdout, $stderr ) =
 					  capture_exec( "ovpmutil.exe dep /pn " 
 						  . $policy . " /np "
-						  . $node_name );
+						  . $node_name 
+						  . " $option" );
 					print( "stdout: " . $stdout );
 					@stdout = split( /\n/, $stdout );
 					$stdout = pop(@stdout);
@@ -88,7 +91,6 @@ sub main {
 						error( $node_name, $policy, $stdout );
 					}
 				}
-
 				# Mark the node as completed
 				if ( !($error) ) {
 					done( $node->{name} );
@@ -98,6 +100,17 @@ sub main {
 				usleep( tempo() * $i );
 			}
 		}
+	}
+}
+
+sub policy_state {
+    my ( $ref_polstate ) = @_;
+	
+	if ( $ref_polstate =~ /disabled/ ){
+		return '/e FALSE';
+	} 
+	else {
+		return '';
 	}
 }
 
